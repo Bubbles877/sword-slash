@@ -218,11 +218,11 @@
         ground.receiveShadow = true;
         scene.add(ground);
 
-        // 背景の支柱（完全な円柱、高さを大幅に増やして縦長に）
+        // 背景の支柱（完全な円柱）
         const pillarGeometry = new THREE.CylinderGeometry(
             0.45,    // radiusTop
             0.45,    // radiusBottom
-            20,      // height（8→20に大幅増加）
+            8,       // height
             64,      // radialSegments（円周方向）
             32,      // heightSegments（高さ方向）
             false    // openEnded
@@ -246,7 +246,7 @@
 
         pillarPositions.forEach(pos => {
             const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-            pillar.position.set(pos[0], 10, pos[2]);  // Y座標を4→10に（高さ20の支柱の中心）
+            pillar.position.set(pos[0], 4, pos[2]);
             pillar.castShadow = true;
             pillar.receiveShadow = true;
             scene.add(pillar);
@@ -255,7 +255,7 @@
             const glowGeometry = new THREE.CylinderGeometry(
                 0.75,    // radiusTop
                 0.75,    // radiusBottom
-                20,      // height（8→20に合わせる）
+                8,       // height
                 64,      // radialSegments
                 32,      // heightSegments
                 false    // openEnded
@@ -534,9 +534,9 @@
                 // 刀身（長く）
                 const bladeGeometry = new THREE.BoxGeometry(0.08, 0.08, 3.5);
                 const bladeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0xffffff,  // 白に変更
-                    emissive: 0xffffff,  // 白い発光に変更
-                    emissiveIntensity: 0.5,  // 発光を少し強く
+                    color: 0xe0f0ff,  // 青白く
+                    emissive: 0x8080ff,  // 青白い発光
+                    emissiveIntensity: 0.5,
                     roughness: 0.2,
                     metalness: 0.9
                 });
@@ -572,9 +572,9 @@
                 // グロー（長く）
                 const glowGeometry = new THREE.BoxGeometry(0.15, 0.15, 3.7);
                 const glowMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffffff,  // 白に変更
+                    color: 0xc0e0ff,  // 青白く
                     transparent: true,
-                    opacity: 0.3  // 少し明るく
+                    opacity: 0.3
                 });
                 const glow = new THREE.Mesh(glowGeometry, glowMaterial);
                 glow.position.z = -1.85;
@@ -660,7 +660,7 @@
                 this.lines = [];
                 for (let i = 0; i < 5; i++) {
                     const material = new THREE.LineBasicMaterial({
-                        color: 0xffffff,  // 白に変更
+                        color: 0xc0e0ff,  // 青白く
                         transparent: true,
                         opacity: 0.9 - i * 0.15,
                         linewidth: 5 - i
@@ -685,9 +685,9 @@
                     false
                 );
                 const tubeMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffffff,  // 白に変更
+                    color: 0xc0e0ff,  // 青白く
                     transparent: true,
-                    opacity: 0.6  // 少し明るく
+                    opacity: 0.6
                 });
                 this.tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
                 scene.add(this.tube);
