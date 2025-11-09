@@ -137,22 +137,49 @@
             oscillator3.stop(audioCtx.currentTime + 0.08);
         }
 
+        // 打撃音（元に戻す前の鋭い斬撃音と同じ）
         function playHitSound() {
-            const oscillator = audioCtx.createOscillator();
+            const oscillator1 = audioCtx.createOscillator();
+            const oscillator2 = audioCtx.createOscillator();
+            const oscillator3 = audioCtx.createOscillator();
+            const oscillator4 = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
-            oscillator.connect(gainNode);
+            oscillator1.connect(gainNode);
+            oscillator2.connect(gainNode);
+            oscillator3.connect(gainNode);
+            oscillator4.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            oscillator.type = 'square';
-            oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
-            oscillator.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.12);
+            oscillator1.type = 'square';
+            oscillator2.type = 'sawtooth';
+            oscillator3.type = 'triangle';
+            oscillator4.type = 'sine';
+
+            // 極限の高音でスタート（刀の衝撃音）
+            oscillator1.frequency.setValueAtTime(8000, audioCtx.currentTime);
+            oscillator1.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.04);
+
+            oscillator2.frequency.setValueAtTime(10000, audioCtx.currentTime);
+            oscillator2.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.04);
+
+            oscillator3.frequency.setValueAtTime(12000, audioCtx.currentTime);
+            oscillator3.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.04);
+
+            oscillator4.frequency.setValueAtTime(15000, audioCtx.currentTime);
+            oscillator4.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.04);
 
             gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
 
-            oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 0.12);
+            oscillator1.start(audioCtx.currentTime);
+            oscillator2.start(audioCtx.currentTime);
+            oscillator3.start(audioCtx.currentTime);
+            oscillator4.start(audioCtx.currentTime);
+            oscillator1.stop(audioCtx.currentTime + 0.04);
+            oscillator2.stop(audioCtx.currentTime + 0.04);
+            oscillator3.stop(audioCtx.currentTime + 0.04);
+            oscillator4.stop(audioCtx.currentTime + 0.04);
         }
 
         // 照明
@@ -235,8 +262,8 @@
                 const sphereGeometry = new THREE.SphereGeometry(0.8, 32, 32);
 
                 this.material = new THREE.MeshStandardMaterial({
-                    color: 0xff3366,
-                    emissive: 0xff3366,
+                    color: 0xffff00,
+                    emissive: 0xffff00,
                     emissiveIntensity: 0.3,
                     roughness: 0.3,
                     metalness: 0.7
@@ -269,7 +296,7 @@
 
                 const glowGeometry = new THREE.SphereGeometry(1.8, 32, 32);
                 const glowMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xff3366,
+                    color: 0xffff00,
                     transparent: true,
                     opacity: 0.15
                 });
@@ -280,8 +307,8 @@
             }
 
             updateColor() {
-                // 基本色（常にピンク）
-                const baseColor = new THREE.Color(0xff3366);
+                // 基本色（黄色）
+                const baseColor = new THREE.Color(0xffff00);
 
                 // hitFlashで赤にする（斬られた瞬間が一番赤い）
                 const flashColor = new THREE.Color(0xff0000);
@@ -375,6 +402,57 @@
 
         const target = new Target3D();
 
+        // 斬られたエフェクト用の配列
+        const slashEffects = [];
+
+        // 斬られたエフェクト（白くまぶしい楕円平面）
+        class SlashEffect {
+            constructor(position, perpendicular1, perpendicular2) {
+                // 楕円の平面ジオメトリ
+                const shape = new THREE.Shape();
+                const radiusX = 1.5;  // 横幅
+                const radiusY = 0.8;  // 縦幅
+                for (let i = 0; i <= 64; i++) {
+                    const angle = (i / 64) * Math.PI * 2;
+                    const x = Math.cos(angle) * radiusX;
+                    const y = Math.sin(angle) * radiusY;
+                    if (i === 0) shape.moveTo(x, y);
+                    else shape.lineTo(x, y);
+                }
+                const geometry = new THREE.ShapeGeometry(shape);
+
+                // まぶしい白い発光マテリアル
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.9
+                });
+
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(position);
+
+                // 切り口の平面に沿って回転
+                const normal = new THREE.Vector3().crossVectors(perpendicular1, perpendicular2).normalize();
+                this.mesh.lookAt(position.clone().add(normal));
+
+                this.life = 1.0;
+                scene.add(this.mesh);
+            }
+
+            update() {
+                this.life -= 0.05;
+                this.mesh.material.opacity = this.life * 0.9;
+                this.mesh.scale.setScalar(1 + (1 - this.life) * 0.5);  // 徐々に拡大
+
+                if (this.life <= 0) {
+                    scene.remove(this.mesh);
+                    return false;
+                }
+                return true;
+            }
+        }
+
         // 極細の鋭いパーティクル（薄い板状）
         const particles = [];
         const sharpParticleGeometry = new THREE.PlaneGeometry(0.03, 0.25);
@@ -445,14 +523,14 @@
                 tip.rotation.x = Math.PI / 2;
                 tip.position.z = -3.7;
 
-                // 柄（長く）
+                // 柄（長く、刀身と同じ方向）
                 const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.8, 16);
                 const handleMaterial = new THREE.MeshStandardMaterial({
                     color: 0x4a3020,
                     roughness: 0.8
                 });
                 const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-                handle.rotation.z = Math.PI / 2;
+                handle.rotation.x = Math.PI / 2;  // Z軸方向に向ける
                 handle.position.z = 0.4;
 
                 // 鍔
@@ -572,11 +650,11 @@
                     line.position.y += offset;
                 }
 
-                // グローエフェクト（太く派手に）
+                // グローエフェクト（刀身に合わせて細く）
                 const tubeGeometry = new THREE.TubeGeometry(
                     new THREE.LineCurve3(start, end),
                     8,
-                    0.4,
+                    0.05,  // 刀身の太さ（0.08）に合わせて細く
                     12,
                     false
                 );
@@ -682,6 +760,9 @@
                     const perpendicular1 = new THREE.Vector3().crossVectors(slashDir3D, up).normalize();
                     const perpendicular2 = new THREE.Vector3().crossVectors(slashDir3D, perpendicular1).normalize();
 
+                    // 白くまぶしい斬撃エフェクトを追加
+                    slashEffects.push(new SlashEffect(hitPoint, perpendicular1, perpendicular2));
+
                     // 鋭いパーティクル（切り口の平面に沿って飛び散る）
                     for (let i = 0; i < 50; i++) {
                         // 平面上のランダムな方向
@@ -716,7 +797,8 @@
                     }
                     lastSlashPosition = hitPoint.clone();
 
-                    playSlashSound();  // パンチ音を削除
+                    playHitSound();    // 鋭い打撃音
+                    playSlashSound();  // 風切り音
                 }
             }
         }
@@ -751,6 +833,12 @@
             for (let i = swordTrails.length - 1; i >= 0; i--) {
                 if (!swordTrails[i].update()) {
                     swordTrails.splice(i, 1);
+                }
+            }
+
+            for (let i = slashEffects.length - 1; i >= 0; i--) {
+                if (!slashEffects[i].update()) {
+                    slashEffects.splice(i, 1);
                 }
             }
 
