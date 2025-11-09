@@ -280,13 +280,10 @@
             }
 
             updateColor() {
-                // 基本色（体力に応じて）
-                let baseColor;
-                if (this.health >= 3) baseColor = new THREE.Color(0xff3366);
-                else if (this.health === 2) baseColor = new THREE.Color(0xff9933);
-                else baseColor = new THREE.Color(0xffff33);
+                // 基本色（常にピンク）
+                const baseColor = new THREE.Color(0xff3366);
 
-                // hitFlashで赤みを追加（斬られた瞬間が一番赤い）
+                // hitFlashで赤にする（斬られた瞬間が一番赤い）
                 const flashColor = new THREE.Color(0xff0000);
                 const finalColor = baseColor.clone().lerp(flashColor, this.hitFlash);
 
@@ -338,7 +335,7 @@
 
                 // ヒットフラッシュをじわっと減衰
                 if (this.hitFlash > 0) {
-                    this.hitFlash *= 0.90;  // ゆっくり元の色に戻る
+                    this.hitFlash *= 0.96;  // もっとゆっくり元の色に戻る
                     if (this.hitFlash < 0.01) this.hitFlash = 0;
                 }
 
@@ -487,32 +484,62 @@
                 this.mesh = group;
                 this.mesh.visible = true;  // 剣を表示
                 this.prevPosition = new THREE.Vector3();
+                this.targetPosition = new THREE.Vector3();
+                this.targetQuaternion = new THREE.Quaternion();
+                this.bladeTipPrevPos = new THREE.Vector3();  // 剣先の前回位置
+
+                // デフォルトの角度を斜めに設定
+                this.mesh.rotation.x = -Math.PI / 6;  // 下向きに30度
+                this.mesh.rotation.y = Math.PI / 4;   // 右に45度
+
                 scene.add(this.mesh);
             }
 
             update(raycaster, camera) {
                 // レイキャストで3D位置を取得
                 const distance = 5;
-                const position = camera.position.clone().add(
+                this.targetPosition.copy(camera.position).add(
                     raycaster.ray.direction.clone().multiplyScalar(distance)
                 );
 
                 // 移動方向を計算
-                const moveDirection = position.clone().sub(this.prevPosition);
+                const moveDirection = this.targetPosition.clone().sub(this.prevPosition);
 
                 // 移動している場合は、その方向に剣を向ける
-                if (moveDirection.length() > 0.01) {
+                if (moveDirection.length() > 0.05) {
                     // 移動方向の先端を向く
-                    const targetPoint = position.clone().add(moveDirection.multiplyScalar(2));
-                    this.mesh.lookAt(targetPoint);
+                    const targetPoint = this.targetPosition.clone().add(moveDirection.multiplyScalar(2));
+                    const tempObj = new THREE.Object3D();
+                    tempObj.position.copy(this.targetPosition);
+                    tempObj.lookAt(targetPoint);
+                    this.targetQuaternion.copy(tempObj.quaternion);
                 } else {
-                    // 動いていない場合は前方を向く
-                    this.mesh.lookAt(camera.position);
-                    this.mesh.rotateY(Math.PI);
+                    // 動いていない場合はデフォルトの角度
+                    const tempObj = new THREE.Object3D();
+                    tempObj.rotation.x = -Math.PI / 6;
+                    tempObj.rotation.y = Math.PI / 4;
+                    this.targetQuaternion.copy(tempObj.quaternion);
                 }
 
-                this.mesh.position.copy(position);
-                this.prevPosition.copy(position);
+                // 位置を滑らかに補間（lerp）
+                this.mesh.position.lerp(this.targetPosition, 0.3);
+
+                // 回転を滑らかに補間（slerp）
+                this.mesh.quaternion.slerp(this.targetQuaternion, 0.2);
+
+                // 剣筋エフェクト（剣を動かしている時）
+                const bladeTipLocalPos = new THREE.Vector3(0, 0, -3.5);  // 剣先のローカル位置
+                const bladeTipWorldPos = bladeTipLocalPos.applyMatrix4(this.mesh.matrixWorld);
+
+                if (this.bladeTipPrevPos.length() > 0) {
+                    const tipMoveDist = bladeTipWorldPos.distanceTo(this.bladeTipPrevPos);
+                    if (tipMoveDist > 0.3) {  // 速く動いている時だけ軌跡を表示
+                        swordTrails.push(new SwordTrail(this.bladeTipPrevPos.clone(), bladeTipWorldPos.clone()));
+                    }
+                }
+
+                this.bladeTipPrevPos.copy(bladeTipWorldPos);
+                this.prevPosition.copy(this.targetPosition);
             }
         }
 
@@ -643,38 +670,44 @@
 
                     const hitPoint = intersects[0].point;
 
-                    // 斬撃方向に沿ったパーティクル
-                    // directionはスクリーン空間（x, -y）なので3D空間に変換
+                    // 斬撃平面に沿ったパーティクル
                     const slashDir3D = new THREE.Vector3(
                         direction.x,
                         direction.y,
                         direction.z
                     ).normalize();
 
-                    // 鋭いパーティクル（斬った方向に飛び散る）
+                    // 斬撃方向に垂直な平面を作成
+                    const up = new THREE.Vector3(0, 1, 0);
+                    const perpendicular1 = new THREE.Vector3().crossVectors(slashDir3D, up).normalize();
+                    const perpendicular2 = new THREE.Vector3().crossVectors(slashDir3D, perpendicular1).normalize();
+
+                    // 鋭いパーティクル（切り口の平面に沿って飛び散る）
                     for (let i = 0; i < 50; i++) {
-                        const spread = 0.4;  // 広がり具合
-                        const velocity = slashDir3D.clone()
-                            .multiplyScalar(0.4 + Math.random() * 0.3)
-                            .add(new THREE.Vector3(
-                                (Math.random() - 0.5) * spread,
-                                (Math.random() - 0.5) * spread,
-                                (Math.random() - 0.5) * spread
-                            ));
-                        particles.push(new SharpParticle(hitPoint, target.material.color.getHex(), velocity));
+                        // 平面上のランダムな方向
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 0.3 + Math.random() * 0.4;
+                        const planeVelocity = perpendicular1.clone()
+                            .multiplyScalar(Math.cos(angle) * radius)
+                            .add(perpendicular2.clone().multiplyScalar(Math.sin(angle) * radius));
+
+                        // 少し斬撃方向にも飛ばす
+                        planeVelocity.add(slashDir3D.clone().multiplyScalar(0.2));
+
+                        particles.push(new SharpParticle(hitPoint, target.material.color.getHex(), planeVelocity));
                     }
 
-                    // 光のパーティクル（斬った方向に飛び散る）
+                    // 白い光のパーティクル（切り口の平面に沿って飛び散る）
                     for (let i = 0; i < 30; i++) {
-                        const spread = 0.35;
-                        const velocity = slashDir3D.clone()
-                            .multiplyScalar(0.35 + Math.random() * 0.25)
-                            .add(new THREE.Vector3(
-                                (Math.random() - 0.5) * spread,
-                                (Math.random() - 0.5) * spread,
-                                (Math.random() - 0.5) * spread
-                            ));
-                        particles.push(new SharpParticle(hitPoint, 0x00ffff, velocity));
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 0.25 + Math.random() * 0.35;
+                        const planeVelocity = perpendicular1.clone()
+                            .multiplyScalar(Math.cos(angle) * radius)
+                            .add(perpendicular2.clone().multiplyScalar(Math.sin(angle) * radius));
+
+                        planeVelocity.add(slashDir3D.clone().multiplyScalar(0.15));
+
+                        particles.push(new SharpParticle(hitPoint, 0xffffff, planeVelocity));  // 白に変更
                     }
 
                     // 派手な剣の軌跡
@@ -683,8 +716,7 @@
                     }
                     lastSlashPosition = hitPoint.clone();
 
-                    playHitSound();
-                    playSlashSound();
+                    playSlashSound();  // パンチ音を削除
                 }
             }
         }
