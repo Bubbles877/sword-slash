@@ -218,8 +218,15 @@
         ground.receiveShadow = true;
         scene.add(ground);
 
-        // 背景の支柱（完全な円柱、セグメント数を大幅に増やす）
-        const pillarGeometry = new THREE.CylinderGeometry(0.45, 0.45, 8, 128);  // 128セグメントで完全な円柱
+        // 背景の支柱（完全な円柱、セグメント数を大幅に増やす、heightSegmentsも追加）
+        const pillarGeometry = new THREE.CylinderGeometry(
+            0.45,    // radiusTop
+            0.45,    // radiusBottom
+            8,       // height
+            64,      // radialSegments（円周方向）
+            8,       // heightSegments（高さ方向）
+            false    // openEnded
+        );
         const pillarMaterial = new THREE.MeshStandardMaterial({
             color: 0x1a3a5a,
             emissive: 0x0096c8,
@@ -245,7 +252,14 @@
             scene.add(pillar);
 
             // 支柱のグロー
-            const glowGeometry = new THREE.CylinderGeometry(0.75, 0.75, 8, 128);  // 128セグメント
+            const glowGeometry = new THREE.CylinderGeometry(
+                0.75,    // radiusTop
+                0.75,    // radiusBottom
+                8,       // height
+                64,      // radialSegments
+                8,       // heightSegments
+                false    // openEnded
+            );
             const glowMaterial = new THREE.MeshBasicMaterial({
                 color: 0x0096c8,
                 transparent: true,
@@ -255,13 +269,13 @@
             pillar.add(glow);
         });
 
-        // 3Dカプセル形状の敵（大型化）
+        // 3Dカプセル形状の敵（さらに大型化）
         class Target3D {
             constructor() {
                 const group = new THREE.Group();
 
-                const cylinderGeometry = new THREE.CylinderGeometry(0.8, 0.8, 2.6, 32);
-                const sphereGeometry = new THREE.SphereGeometry(0.8, 32, 32);
+                const cylinderGeometry = new THREE.CylinderGeometry(1.0, 1.0, 3.0, 32);
+                const sphereGeometry = new THREE.SphereGeometry(1.0, 32, 32);
 
                 this.material = new THREE.MeshStandardMaterial({
                     color: 0xffff00,
@@ -275,8 +289,8 @@
                 const topSphere = new THREE.Mesh(sphereGeometry, this.material);
                 const bottomSphere = new THREE.Mesh(sphereGeometry, this.material);
 
-                topSphere.position.y = 1.3;
-                bottomSphere.position.y = -1.3;
+                topSphere.position.y = 1.5;
+                bottomSphere.position.y = -1.5;
 
                 cylinder.castShadow = true;
                 topSphere.castShadow = true;
@@ -297,14 +311,7 @@
                 this.hitFlash = 0;  // 斬られた時の赤フラッシュ
                 this.isCritical = false;  // クリティカルヒット（赤）かどうか
 
-                const glowGeometry = new THREE.SphereGeometry(1.8, 32, 32);
-                const glowMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffff00,
-                    transparent: true,
-                    opacity: 0.15
-                });
-                this.glow = new THREE.Mesh(glowGeometry, glowMaterial);
-                this.mesh.add(this.glow);
+                // グローは削除（半透明の球を無くす）
 
                 scene.add(this.mesh);
             }
@@ -313,15 +320,19 @@
                 // 基本色（黄色）
                 const baseColor = new THREE.Color(0xffff00);
 
-                // hitFlashで赤かオレンジにする
-                const flashColor = this.isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0xff8800);
-                const finalColor = baseColor.clone().lerp(flashColor, this.hitFlash);
+                let finalColor;
+                if (this.hitFlash > 0) {
+                    // hitFlash中は完全に赤かオレンジ
+                    finalColor = this.isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0xff8800);
+                    // 徐々に基本色に戻る
+                    finalColor = finalColor.clone().lerp(baseColor, 1 - this.hitFlash);
+                } else {
+                    finalColor = baseColor;
+                }
 
                 this.material.color.copy(finalColor);
                 this.material.emissive.copy(finalColor);
                 this.material.emissiveIntensity = 0.3 + this.hitFlash * 0.5;  // 斬られた時は光る
-                this.glow.material.color.copy(finalColor);
-                this.glow.material.opacity = 0.15 + this.hitFlash * 0.3;
             }
 
             update() {
