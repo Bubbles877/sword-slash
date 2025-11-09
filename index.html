@@ -52,7 +52,7 @@
         <div style="font-size: 18px; margin-top: 5px;">コンボ: <span id="combo">0</span></div>
     </div>
     <div id="instructions">
-        マウスを素早く動かして的を斬れ！（Three.js 3D版）
+        マウスを素早く動かして的を斬れ！
     </div>
     <div id="canvas-container"></div>
 
@@ -100,49 +100,41 @@
         // Audio Context
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        // 極限に鋭い斬撃音
+        // 鋭い斬撃音
         function playSlashSound() {
             const oscillator1 = audioCtx.createOscillator();
             const oscillator2 = audioCtx.createOscillator();
             const oscillator3 = audioCtx.createOscillator();
-            const oscillator4 = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
             oscillator1.connect(gainNode);
             oscillator2.connect(gainNode);
             oscillator3.connect(gainNode);
-            oscillator4.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
             oscillator1.type = 'square';
             oscillator2.type = 'sawtooth';
             oscillator3.type = 'triangle';
-            oscillator4.type = 'sine';
 
-            // 極限の高音でスタート（刀の風切り音）
-            oscillator1.frequency.setValueAtTime(8000, audioCtx.currentTime);
-            oscillator1.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.04);
+            // 高音でスタート（刀の風切り音）
+            oscillator1.frequency.setValueAtTime(4000, audioCtx.currentTime);
+            oscillator1.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.08);
 
-            oscillator2.frequency.setValueAtTime(10000, audioCtx.currentTime);
-            oscillator2.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.04);
+            oscillator2.frequency.setValueAtTime(5000, audioCtx.currentTime);
+            oscillator2.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.08);
 
-            oscillator3.frequency.setValueAtTime(12000, audioCtx.currentTime);
-            oscillator3.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.04);
+            oscillator3.frequency.setValueAtTime(6000, audioCtx.currentTime);
+            oscillator3.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.08);
 
-            oscillator4.frequency.setValueAtTime(15000, audioCtx.currentTime);
-            oscillator4.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.04);
-
-            gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+            gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
 
             oscillator1.start(audioCtx.currentTime);
             oscillator2.start(audioCtx.currentTime);
             oscillator3.start(audioCtx.currentTime);
-            oscillator4.start(audioCtx.currentTime);
-            oscillator1.stop(audioCtx.currentTime + 0.04);
-            oscillator2.stop(audioCtx.currentTime + 0.04);
-            oscillator3.stop(audioCtx.currentTime + 0.04);
-            oscillator4.stop(audioCtx.currentTime + 0.04);
+            oscillator1.stop(audioCtx.currentTime + 0.08);
+            oscillator2.stop(audioCtx.currentTime + 0.08);
+            oscillator3.stop(audioCtx.currentTime + 0.08);
         }
 
         function playHitSound() {
@@ -197,8 +189,8 @@
         ground.receiveShadow = true;
         scene.add(ground);
 
-        // 背景の支柱（3倍の太さ）
-        const pillarGeometry = new THREE.CylinderGeometry(0.45, 0.45, 8, 16);
+        // 背景の支柱（完全な円柱）
+        const pillarGeometry = new THREE.CylinderGeometry(0.45, 0.45, 8, 64);  // 64セグメントで滑らかに
         const pillarMaterial = new THREE.MeshStandardMaterial({
             color: 0x1a3a5a,
             emissive: 0x0096c8,
@@ -208,12 +200,12 @@
         });
 
         const pillarPositions = [
-            [-6, 0, -15],  // 一番後ろを更に奥へ
-            [6, 0, -15],   // 一番後ろを更に奥へ
-            [-10, 0, -4],
-            [10, 0, -4],
-            [-8, 0, 2],
-            [8, 0, 2]
+            [-6, 0, -15],  // 一番後ろ
+            [6, 0, -15],   // 一番後ろ
+            [-10, 0, -7],  // 中間（後ろに移動）
+            [10, 0, -7],   // 中間（後ろに移動）
+            [-8, 0, 2],    // 手前
+            [8, 0, 2]      // 手前
         ];
 
         pillarPositions.forEach(pos => {
@@ -224,7 +216,7 @@
             scene.add(pillar);
 
             // 支柱のグロー
-            const glowGeometry = new THREE.CylinderGeometry(0.75, 0.75, 8, 16);
+            const glowGeometry = new THREE.CylinderGeometry(0.75, 0.75, 8, 64);  // 64セグメント
             const glowMaterial = new THREE.MeshBasicMaterial({
                 color: 0x0096c8,
                 transparent: true,
@@ -273,6 +265,7 @@
                 this.health = 3;
                 this.hitCooldown = 0;
                 this.shakeAmount = 0;
+                this.hitFlash = 0;  // 斬られた時の赤フラッシュ
 
                 const glowGeometry = new THREE.SphereGeometry(1.8, 32, 32);
                 const glowMaterial = new THREE.MeshBasicMaterial({
@@ -287,14 +280,21 @@
             }
 
             updateColor() {
-                let color;
-                if (this.health >= 3) color = 0xff3366;
-                else if (this.health === 2) color = 0xff9933;
-                else color = 0xffff33;
+                // 基本色（体力に応じて）
+                let baseColor;
+                if (this.health >= 3) baseColor = new THREE.Color(0xff3366);
+                else if (this.health === 2) baseColor = new THREE.Color(0xff9933);
+                else baseColor = new THREE.Color(0xffff33);
 
-                this.material.color.setHex(color);
-                this.material.emissive.setHex(color);
-                this.glow.material.color.setHex(color);
+                // hitFlashで赤みを追加（斬られた瞬間が一番赤い）
+                const flashColor = new THREE.Color(0xff0000);
+                const finalColor = baseColor.clone().lerp(flashColor, this.hitFlash);
+
+                this.material.color.copy(finalColor);
+                this.material.emissive.copy(finalColor);
+                this.material.emissiveIntensity = 0.3 + this.hitFlash * 0.5;  // 斬られた時は光る
+                this.glow.material.color.copy(finalColor);
+                this.glow.material.opacity = 0.15 + this.hitFlash * 0.3;
             }
 
             update() {
@@ -336,6 +336,12 @@
                     this.hitCooldown--;
                 }
 
+                // ヒットフラッシュをじわっと減衰
+                if (this.hitFlash > 0) {
+                    this.hitFlash *= 0.90;  // ゆっくり元の色に戻る
+                    if (this.hitFlash < 0.01) this.hitFlash = 0;
+                }
+
                 this.updateColor();
             }
 
@@ -355,6 +361,7 @@
 
                 this.shakeAmount = 3;  // 振動を3倍に
                 this.hitCooldown = 10;
+                this.hitFlash = 1.0;  // 斬られた瞬間は真っ赤
 
                 cameraShake.amount = 0.3;
 
@@ -423,8 +430,8 @@
             constructor() {
                 const group = new THREE.Group();
 
-                // 刀身
-                const bladeGeometry = new THREE.BoxGeometry(0.1, 0.1, 2);
+                // 刀身（長く）
+                const bladeGeometry = new THREE.BoxGeometry(0.08, 0.08, 3.5);
                 const bladeMaterial = new THREE.MeshStandardMaterial({
                     color: 0xc0c0c0,
                     emissive: 0x4080ff,
@@ -433,23 +440,23 @@
                     metalness: 0.9
                 });
                 const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
-                blade.position.z = -1;
+                blade.position.z = -1.75;
 
                 // 刃先
-                const tipGeometry = new THREE.ConeGeometry(0.07, 0.3, 4);
+                const tipGeometry = new THREE.ConeGeometry(0.07, 0.4, 4);
                 const tip = new THREE.Mesh(tipGeometry, bladeMaterial);
                 tip.rotation.x = Math.PI / 2;
-                tip.position.z = -2.15;
+                tip.position.z = -3.7;
 
-                // 柄
-                const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 16);
+                // 柄（長く）
+                const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.8, 16);
                 const handleMaterial = new THREE.MeshStandardMaterial({
                     color: 0x4a3020,
                     roughness: 0.8
                 });
                 const handle = new THREE.Mesh(handleGeometry, handleMaterial);
                 handle.rotation.z = Math.PI / 2;
-                handle.position.z = 0.3;
+                handle.position.z = 0.4;
 
                 // 鍔
                 const guardGeometry = new THREE.BoxGeometry(0.15, 0.3, 0.05);
@@ -459,16 +466,17 @@
                     metalness: 0.8
                 });
                 const guard = new THREE.Mesh(guardGeometry, guardMaterial);
+                guard.position.z = 0;
 
-                // グロー
-                const glowGeometry = new THREE.BoxGeometry(0.15, 0.15, 2.2);
+                // グロー（長く）
+                const glowGeometry = new THREE.BoxGeometry(0.15, 0.15, 3.7);
                 const glowMaterial = new THREE.MeshBasicMaterial({
                     color: 0x00ffff,
                     transparent: true,
                     opacity: 0.2
                 });
                 const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-                glow.position.z = -1;
+                glow.position.z = -1.85;
 
                 group.add(blade);
                 group.add(tip);
@@ -478,24 +486,33 @@
 
                 this.mesh = group;
                 this.mesh.visible = true;  // 剣を表示
+                this.prevPosition = new THREE.Vector3();
                 scene.add(this.mesh);
             }
 
             update(raycaster, camera) {
                 // レイキャストで3D位置を取得
-                const direction = new THREE.Vector3();
-                raycaster.ray.direction.clone().normalize();
-
                 const distance = 5;
                 const position = camera.position.clone().add(
                     raycaster.ray.direction.clone().multiplyScalar(distance)
                 );
 
-                this.mesh.position.copy(position);
+                // 移動方向を計算
+                const moveDirection = position.clone().sub(this.prevPosition);
 
-                // カメラの方向に向ける
-                this.mesh.lookAt(camera.position);
-                this.mesh.rotateY(Math.PI);
+                // 移動している場合は、その方向に剣を向ける
+                if (moveDirection.length() > 0.01) {
+                    // 移動方向の先端を向く
+                    const targetPoint = position.clone().add(moveDirection.multiplyScalar(2));
+                    this.mesh.lookAt(targetPoint);
+                } else {
+                    // 動いていない場合は前方を向く
+                    this.mesh.lookAt(camera.position);
+                    this.mesh.rotateY(Math.PI);
+                }
+
+                this.mesh.position.copy(position);
+                this.prevPosition.copy(position);
             }
         }
 
@@ -626,22 +643,37 @@
 
                     const hitPoint = intersects[0].point;
 
-                    // 鋭いパーティクル
+                    // 斬撃方向に沿ったパーティクル
+                    // directionはスクリーン空間（x, -y）なので3D空間に変換
+                    const slashDir3D = new THREE.Vector3(
+                        direction.x,
+                        direction.y,
+                        direction.z
+                    ).normalize();
+
+                    // 鋭いパーティクル（斬った方向に飛び散る）
                     for (let i = 0; i < 50; i++) {
-                        const velocity = new THREE.Vector3(
-                            (Math.random() - 0.5) * 0.6,
-                            Math.random() * 0.6,
-                            (Math.random() - 0.5) * 0.6
-                        );
+                        const spread = 0.4;  // 広がり具合
+                        const velocity = slashDir3D.clone()
+                            .multiplyScalar(0.4 + Math.random() * 0.3)
+                            .add(new THREE.Vector3(
+                                (Math.random() - 0.5) * spread,
+                                (Math.random() - 0.5) * spread,
+                                (Math.random() - 0.5) * spread
+                            ));
                         particles.push(new SharpParticle(hitPoint, target.material.color.getHex(), velocity));
                     }
 
+                    // 光のパーティクル（斬った方向に飛び散る）
                     for (let i = 0; i < 30; i++) {
-                        const velocity = new THREE.Vector3(
-                            (Math.random() - 0.5) * 0.5,
-                            Math.random() * 0.5,
-                            (Math.random() - 0.5) * 0.5
-                        );
+                        const spread = 0.35;
+                        const velocity = slashDir3D.clone()
+                            .multiplyScalar(0.35 + Math.random() * 0.25)
+                            .add(new THREE.Vector3(
+                                (Math.random() - 0.5) * spread,
+                                (Math.random() - 0.5) * spread,
+                                (Math.random() - 0.5) * spread
+                            ));
                         particles.push(new SharpParticle(hitPoint, 0x00ffff, velocity));
                     }
 
