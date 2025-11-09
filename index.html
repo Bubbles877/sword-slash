@@ -169,8 +169,8 @@
             oscillator4.frequency.setValueAtTime(15000, audioCtx.currentTime);
             oscillator4.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.04);
 
-            // クリティカル時は音量1.5倍
-            const volume = isCritical ? 1.05 : 0.7;
+            // クリティカル時は音量を大幅に増加（明確に聞き分けられるように）
+            const volume = isCritical ? 1.5 : 0.6;
             gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
 
@@ -224,7 +224,7 @@
             0.45,    // radiusBottom
             8,       // height
             64,      // radialSegments（円周方向）
-            8,       // heightSegments（高さ方向）
+            32,      // heightSegments（高さ方向、平べったく見えないよう大幅に増加）
             false    // openEnded
         );
         const pillarMaterial = new THREE.MeshStandardMaterial({
@@ -257,7 +257,7 @@
                 0.75,    // radiusBottom
                 8,       // height
                 64,      // radialSegments
-                8,       // heightSegments
+                32,      // heightSegments
                 false    // openEnded
             );
             const glowMaterial = new THREE.MeshBasicMaterial({
@@ -323,16 +323,23 @@
                 let finalColor;
                 if (this.hitFlash > 0) {
                     // hitFlash中は完全に赤かオレンジ
-                    finalColor = this.isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0xff8800);
-                    // 徐々に基本色に戻る
-                    finalColor = finalColor.clone().lerp(baseColor, 1 - this.hitFlash);
+                    const flashColor = this.isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0xff8800);
+
+                    // hitFlashが0.7以上の時は完全に赤/オレンジ、それ以下で徐々に黄色に戻る
+                    if (this.hitFlash > 0.7) {
+                        finalColor = flashColor;
+                    } else {
+                        // 0.7→0.0の範囲を0→1にマッピング
+                        const lerpFactor = 1 - (this.hitFlash / 0.7);
+                        finalColor = flashColor.clone().lerp(baseColor, lerpFactor);
+                    }
                 } else {
                     finalColor = baseColor;
                 }
 
                 this.material.color.copy(finalColor);
                 this.material.emissive.copy(finalColor);
-                this.material.emissiveIntensity = 0.3 + this.hitFlash * 0.5;  // 斬られた時は光る
+                this.material.emissiveIntensity = 0.3 + this.hitFlash * 1.2;  // クリティカル時に完全に光る
             }
 
             update() {
@@ -374,9 +381,9 @@
                     this.hitCooldown--;
                 }
 
-                // ヒットフラッシュをじわっと減衰
+                // ヒットフラッシュをじわっと減衰（さらにゆっくり）
                 if (this.hitFlash > 0) {
-                    this.hitFlash *= 0.96;  // もっとゆっくり元の色に戻る
+                    this.hitFlash *= 0.985;  // 黄色に戻るのをもっとゆっくりに
                     if (this.hitFlash < 0.01) this.hitFlash = 0;
                 }
 
