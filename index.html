@@ -69,6 +69,8 @@
         let score = 0;
         let combo = 0;
         let comboTimer = 0;
+        let cameraShake = { x: 0, y: 0, amount: 0 };
+        let gridOffset = 0; // 背景グリッドのアニメーション
 
         // マウス追跡
         const mouse = {
@@ -85,46 +87,59 @@
         // Audio Context (Web Audio API)
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        // サウンドエフェクト生成
+        // 鋭い斬撃音エフェクト
         function playSlashSound() {
+            // 高音の鋭い金属音
+            const oscillator1 = audioCtx.createOscillator();
+            const oscillator2 = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator1.connect(gainNode);
+            oscillator2.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator1.type = 'square';
+            oscillator2.type = 'sawtooth';
+
+            // 高周波数でスタート
+            oscillator1.frequency.setValueAtTime(2000, audioCtx.currentTime);
+            oscillator1.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.08);
+
+            oscillator2.frequency.setValueAtTime(3000, audioCtx.currentTime);
+            oscillator2.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.08);
+
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+            oscillator1.start(audioCtx.currentTime);
+            oscillator2.start(audioCtx.currentTime);
+            oscillator1.stop(audioCtx.currentTime + 0.08);
+            oscillator2.stop(audioCtx.currentTime + 0.08);
+        }
+
+        function playHitSound() {
+            // 衝撃音
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            oscillator.frequency.setValueAtTime(500, audioCtx.currentTime);
-            oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.15);
 
-            gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
 
             oscillator.start(audioCtx.currentTime);
             oscillator.stop(audioCtx.currentTime + 0.15);
         }
 
-        function playHitSound() {
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
-            oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
-
-            gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-
-            oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 0.3);
-        }
-
-        // 3D背景描画
+        // 3D背景描画（アニメーション付き）
         function draw3DBackground() {
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
+            const centerX = canvas.width / 2 + cameraShake.x;
+            const centerY = canvas.height / 2 + cameraShake.y;
             const horizonY = canvas.height * 0.35; // 地平線
 
             // グラデーション背景（空から床へ）
@@ -136,7 +151,7 @@
             ctx.fillStyle = bgGradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 床のグリッド（遠近法）
+            // 床のグリッド（遠近法 + アニメーション）
             ctx.strokeStyle = 'rgba(0, 150, 200, 0.3)';
             ctx.lineWidth = 1;
 
@@ -145,7 +160,7 @@
 
             // 横線（奥行き方向）
             for (let i = 0; i <= gridLines; i++) {
-                const z = i * gridSpacing;
+                const z = (i * gridSpacing + gridOffset) % (gridLines * gridSpacing);
                 const scale = 1 / (1 + z / 500);
                 const y = horizonY + (canvas.height - horizonY) * (1 - scale);
                 const width = canvas.width * scale;
@@ -184,6 +199,9 @@
             ctx.lineTo(canvas.width, horizonY);
             ctx.stroke();
             ctx.shadowBlur = 0;
+
+            // グリッドアニメーション
+            gridOffset += 1;
         }
 
         // パーティクルクラス
@@ -223,18 +241,18 @@
             }
         }
 
-        // カプセル形状の的クラス（大型化）
+        // カプセル形状の的クラス（3D対応）
         class Target {
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
-                this.width = 120;  // 3倍に拡大
-                this.height = 300; // 3倍に拡大
+                this.z = 0; // 奥行き座標（0が基準位置、正の値で奥へ）
+                this.baseZ = 0;
+                this.width = 120;
+                this.height = 300;
                 this.vx = 0;
                 this.vy = 0;
-                this.rotation = 0;
-                this.rotationSpeed = 0;
-                this.isHit = false;
+                this.vz = 0; // Z方向の速度
                 this.hitCooldown = 0;
                 this.baseX = x;
                 this.baseY = y;
@@ -253,19 +271,18 @@
                 // 位置更新
                 this.x += this.vx;
                 this.y += this.vy;
+                this.z += this.vz;
 
                 // 摩擦
                 this.vx *= 0.9;
                 this.vy *= 0.9;
-
-                // 回転
-                this.rotation += this.rotationSpeed;
-                this.rotationSpeed *= 0.93;
+                this.vz *= 0.88; // Z方向はより強い減衰
 
                 // ベース位置に戻る力
                 const returnForce = 0.08;
                 this.vx += (this.baseX - this.x) * returnForce;
                 this.vy += (this.baseY - this.y) * returnForce;
+                this.vz += (this.baseZ - this.z) * returnForce * 1.5; // Z方向は速く戻る
 
                 // シェイク減衰
                 this.shakeAmount *= 0.85;
@@ -279,9 +296,14 @@
             }
 
             draw() {
+                // Z座標に応じたスケール（遠近法）
+                const scale = 1 / (1 + this.z / 300);
+                const screenX = this.x + cameraShake.x;
+                const screenY = this.y + cameraShake.y;
+
                 ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.rotate(this.rotation);
+                ctx.translate(screenX, screenY);
+                ctx.scale(scale, scale);
 
                 // シェイク効果
                 if (this.shakeAmount > 0) {
@@ -291,13 +313,14 @@
                     );
                 }
 
-                // 影
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                // 影（3D風）
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.4 * scale})`;
                 ctx.beginPath();
                 const shadowRadius = this.width / 2 + 5;
-                ctx.arc(10, this.height/2 - shadowRadius + 10, shadowRadius, 0, Math.PI * 2);
-                ctx.arc(10, -this.height/2 + shadowRadius + 10, shadowRadius, 0, Math.PI * 2);
-                ctx.rect(-shadowRadius + 10, -this.height/2 + shadowRadius + 10, this.width + 10, this.height - this.width);
+                const shadowOffset = 15 + this.z * 0.3; // Z座標で影の位置が変わる
+                ctx.arc(shadowOffset, this.height/2 - shadowRadius + shadowOffset, shadowRadius, 0, Math.PI * 2);
+                ctx.arc(shadowOffset, -this.height/2 + shadowRadius + shadowOffset, shadowRadius, 0, Math.PI * 2);
+                ctx.rect(-shadowRadius + shadowOffset, -this.height/2 + shadowRadius + shadowOffset, this.width + 10, this.height - this.width);
                 ctx.fill();
 
                 // カプセル描画（角丸長方形）
@@ -347,13 +370,19 @@
                     return true;
                 }
 
-                // 衝撃を与える
-                const power = Math.min(slashPower * 0.7, 20);
+                // 後方へのノックバック（Z方向）
+                this.vz = 15; // 奥に押し出す
+
+                // XY方向の動きは小さく
+                const power = Math.min(slashPower * 0.3, 8);
                 this.vx = Math.cos(slashAngle) * power;
                 this.vy = Math.sin(slashAngle) * power;
-                this.rotationSpeed = (Math.random() - 0.5) * 0.4;
+
                 this.shakeAmount = 20;
                 this.hitCooldown = 10;
+
+                // カメラシェイク
+                cameraShake.amount = 15;
 
                 return true;
             }
@@ -361,10 +390,10 @@
             respawn() {
                 this.x = this.baseX;
                 this.y = this.baseY;
+                this.z = this.baseZ;
                 this.vx = 0;
                 this.vy = 0;
-                this.rotation = 0;
-                this.rotationSpeed = 0;
+                this.vz = 0;
                 this.health = 3;
                 this.hitCooldown = 30;
             }
@@ -372,21 +401,18 @@
             checkSlash(x1, y1, x2, y2) {
                 if (this.hitCooldown > 0) return false;
 
-                // 線分と長方形の衝突判定（回転考慮）
-                const cos = Math.cos(-this.rotation);
-                const sin = Math.sin(-this.rotation);
+                // スケールを考慮した当たり判定
+                const scale = 1 / (1 + this.z / 300);
+                const scaledWidth = this.width * scale;
+                const scaledHeight = this.height * scale;
 
-                // ローカル座標に変換
-                const lx1 = cos * (x1 - this.x) - sin * (y1 - this.y);
-                const ly1 = sin * (x1 - this.x) + cos * (y1 - this.y);
-                const lx2 = cos * (x2 - this.x) - sin * (y2 - this.y);
-                const ly2 = sin * (x2 - this.x) + cos * (y2 - this.y);
+                // 簡易的な矩形との衝突判定
+                const left = this.x - scaledWidth / 2;
+                const right = this.x + scaledWidth / 2;
+                const top = this.y - scaledHeight / 2;
+                const bottom = this.y + scaledHeight / 2;
 
-                // カプセルとの当たり判定（簡易版）
-                const radius = this.width / 2;
-                const halfHeight = this.height / 2 - radius;
-
-                return this.lineIntersectsRect(lx1, ly1, lx2, ly2, -radius, -halfHeight, this.width, this.height - this.width);
+                return this.lineIntersectsRect(x1, y1, x2, y2, left, top, scaledWidth, scaledHeight);
             }
 
             lineIntersectsRect(x1, y1, x2, y2, rx, ry, rw, rh) {
@@ -517,6 +543,16 @@
 
         // ゲームループ
         function gameLoop() {
+            // カメラシェイク更新
+            if (cameraShake.amount > 0) {
+                cameraShake.x = (Math.random() - 0.5) * cameraShake.amount;
+                cameraShake.y = (Math.random() - 0.5) * cameraShake.amount;
+                cameraShake.amount *= 0.85;
+            } else {
+                cameraShake.x = 0;
+                cameraShake.y = 0;
+            }
+
             // 3D背景描画
             draw3DBackground();
 
